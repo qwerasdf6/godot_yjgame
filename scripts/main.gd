@@ -675,9 +675,9 @@ func _mp_apply_players(flat: PackedFloat32Array) -> void:
                                 av = MP_PLAYER_SCENE.instantiate()
                                 av.remote_controlled = true
                                 add_child(av)
-                                var cam := av.get_node_or_null("Camera2D")
+                                var cam: Node = av.get_node_or_null("Camera2D")
                                 if cam:
-                                        cam.enabled = false
+                                        (cam as Camera2D).enabled = false
                                 _mp_client_avatars[pid] = av
                         av.global_position = pos
                 i += 5
