@@ -519,6 +519,13 @@ func _mp_client_process(_delta: float) -> void:
                         continue
                 var target: Vector2 = e.get_meta("target_pos", e.global_position)
                 e.global_position = e.global_position.lerp(target, 0.3)
+        # 其他玩家分身同样插值，避免快照到达时位置跳变
+        for slot in _mp_client_avatars:
+                var av = _mp_client_avatars[slot]
+                if not is_instance_valid(av):
+                        continue
+                var t: Vector2 = av.get_meta("target_pos", av.global_position)
+                av.global_position = av.global_position.lerp(t, 0.3)
 
 func _mp_client_physics(_delta: float) -> void:
         if game_over:
@@ -687,22 +694,29 @@ func _mp_apply_players(flat: PackedFloat32Array) -> void:
                         if player.global_position.distance_squared_to(pos) > 100.0 * 100.0:
                                 player.global_position = pos
                 else:
-                        # 其他玩家（主机或其他客户端）：渲染分身
+                        # 其他玩家（主机或其他客户端）：渲染分身（纯视觉，不做物理模拟）
                         var av = _mp_client_avatars.get(slot)
-                        if av == null or not is_instance_valid(av):
+                        var is_new := av == null or not is_instance_valid(av)
+                        if is_new:
                                 av = MP_PLAYER_SCENE.instantiate()
                                 av.remote_controlled = true
+                                # 关闭物理模拟：位置完全由快照插值驱动，
+                                # 否则 move_and_slide 与快照传送互相打架，表现为"抽风"
+                                av.set_physics_process(false)
                                 # 入树前禁用相机，避免抢占当前视角
                                 var cam: Node = av.get_node_or_null("Camera2D")
                                 if cam:
                                         (cam as Camera2D).enabled = false
                                 add_child(av)
                                 av.show()
+                                av.global_position = pos
                                 _mp_client_avatars[slot] = av
-                        # 用两次快照的位移估算移动方向，驱动分身走路动画
-                        var step: Vector2 = pos - av.global_position
-                        av.net_move = step.limit_length(1.0)
-                        av.global_position = pos
+                        else:
+                                # 记录快照目标位置，_process 中插值平滑
+                                av.set_meta("target_pos", pos)
+                                # 用两次快照的位移估算移动方向，驱动走路动画
+                                var step: Vector2 = pos - av.global_position
+                                av.net_move = step.limit_length(1.0)
                         av.hp = hp
                         av.max_hp = max_hp
                 i += 5

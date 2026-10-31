@@ -18,11 +18,11 @@ func _build_start_button() -> void:
         btn.text = "开始游戏"
         btn.custom_minimum_size = Vector2(240, 56)
         btn.add_theme_font_size_override("font_size", 28)
-        # 锚点：水平居中，垂直约 54% 处（位于标题与底部提示/联机面板之间）
+        # 锚点：水平居中，垂直约 92% 处（位于提示文字下方、屏幕底部）
         btn.anchor_left = 0.5
         btn.anchor_right = 0.5
-        btn.anchor_top = 0.54
-        btn.anchor_bottom = 0.54
+        btn.anchor_top = 0.92
+        btn.anchor_bottom = 0.92
         btn.offset_left = -120
         btn.offset_right = 120
         btn.offset_top = -28
