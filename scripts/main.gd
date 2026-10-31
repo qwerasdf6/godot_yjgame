@@ -700,7 +700,7 @@ func _mp_apply_players(flat: PackedFloat32Array) -> void:
                                 av.show()
                                 _mp_client_avatars[slot] = av
                         # 用两次快照的位移估算移动方向，驱动分身走路动画
-                        var step := pos - av.global_position
+                        var step: Vector2 = pos - av.global_position
                         av.net_move = step.limit_length(1.0)
                         av.global_position = pos
                         av.hp = hp
