@@ -14,6 +14,11 @@ const RANDOM_SHOP := true
 const SPELL_STOCK_COUNT := 4
 const WEAPON_STOCK_COUNT := 2
 
+# ---- 联机 ----
+const MP_PLAYER_SCENE := preload("res://scenes/Player.tscn")
+const MP_ENEMY_SCENE := preload("res://scenes/Enemy.tscn")
+const MP_SNAPSHOT_INTERVAL := 0.1   # 快照频率 10Hz
+
 @onready var player: Player = $Player
 @onready var bullet_pool: BulletPool = $BulletPool
 @onready var enemy_container: Node2D = $EnemyContainer
@@ -50,6 +55,17 @@ var weapon_price_pool: Array[int] = []
 # 调试用：F3 重置
 var debug_hits: int = 0
 
+# ---- 联机状态 ----
+var _mp_snap_timer: float = 0.0
+var _mp_next_enemy_id: int = 1
+var _mp_enemy_ids: Dictionary = {}        # 主机：Enemy实例 -> 网络id
+var _mp_remote_players: Dictionary = {}   # 主机：peer_id -> Player分身
+var _mp_remote_weapons: Dictionary = {}   # 主机：peer_id -> Weapon分身
+var _mp_remote_weapon_data: Dictionary = {}  # 主机：peer_id -> WeaponData（远程玩家的武器数据）
+var _mp_client_enemies: Dictionary = {}    # 客户端：网络id -> Enemy渲染实例
+var _mp_client_avatars: Dictionary = {}   # 客户端：peer_id -> 其他玩家分身
+var _mp_connected: bool = false           # 客户端：收到首个快照后置真
+
 func _ready() -> void:
         _init_loadout()
         _init_shop()
@@ -63,6 +79,10 @@ func _ready() -> void:
         player.touch_controls = touch_controls
         weapon.touch_controls = touch_controls
         _apply_ui_state(UIState.NONE)
+        if Net.is_host():
+                _mp_host_ready()
+        elif Net.is_client():
+                _mp_client_ready()
 
 func _init_loadout() -> void:
         # 成长曲线调整：初始武器强度下调，避免前期无双
@@ -113,6 +133,9 @@ func _add_weapon(w: WeaponData, price: int) -> void:
         weapon_price_pool.append(price)
 
 func _process(delta: float) -> void:
+        if Net.is_client():
+                _mp_client_process(delta)
+                return
         if get_tree().paused:
                 return
         elapsed += delta
@@ -123,8 +146,13 @@ func _process(delta: float) -> void:
                 accum -= 1.0
                 currency += 1.0
         _check_contact()
+        if Net.is_host():
+                _mp_host_snapshot(delta)
 
 func _physics_process(_delta: float) -> void:
+        if Net.is_client():
+                _mp_client_physics(_delta)
+                return
         _resolve_collisions()
 
 func _resolve_collisions() -> void:
@@ -175,13 +203,19 @@ func _segment_intersects_circle(p0: Vector2, p1: Vector2, center: Vector2, radiu
         return (t1 >= 0.0 and t1 <= 1.0) or (t2 >= 0.0 and t2 <= 1.0)
 
 func _check_contact() -> void:
+        # 主机上：本机玩家 + 所有远程玩家都可能被怪碰到
+        var victims: Array = [player]
+        for p in _mp_remote_players.values():
+                if is_instance_valid(p):
+                        victims.append(p)
         for node in enemy_container.get_children():
                 var e := node as Enemy
                 if e == null or e.dead:
                         continue
-                if player.global_position.distance_squared_to(e.global_position) < CONTACT_RADIUS_SQ:
-                        player.take_damage(10.0)
-                        return
+                for v in victims:
+                        if v.global_position.distance_squared_to(e.global_position) < CONTACT_RADIUS_SQ:
+                                v.take_damage(10.0)
+                                return
 
 func _unhandled_input(event: InputEvent) -> void:
         if game_over:
@@ -207,6 +241,9 @@ func toggle_shop() -> void:
         _toggle_ui(UIState.SHOP)
 
 func toggle_editor() -> void:
+        # 联机客户端：武器编辑由主机权威管理，客户端禁用
+        if Net.is_client():
+                return
         _toggle_ui(UIState.EDITOR)
 
 func _toggle_ui(target: UIState) -> void:
@@ -227,7 +264,11 @@ func _apply_ui_state(state: UIState) -> void:
                 editor_ui.refresh()
 
 # 暂停状态统一入口：UI 打开或游戏结束时暂停
+# 联机模式下不暂停整棵场景树（主机暂停会让所有玩家卡住），改为实时商店
 func _sync_pause() -> void:
+        if Net.is_active():
+                get_tree().paused = false
+                return
         get_tree().paused = (ui_state != UIState.NONE) or game_over
 
 # 从库存池随机抽货补满货架（RANDOM_SHOP 为 true 时生效）
@@ -258,6 +299,10 @@ func _draw_weapon() -> void:
         weapon_price_pool.remove_at(idx)
 
 func buy_spell(index: int) -> void:
+        # 客户端：转发给主机结算
+        if Net.is_client():
+                mp_buy_spell.rpc_id(1, index)
+                return
         if index < 0 or index >= shop_spells.size():
                 return
         var price := shop_spell_prices[index]
@@ -267,8 +312,14 @@ func buy_spell(index: int) -> void:
         owned_spells.append(shop_spells[index])
         shop_spells.remove_at(index)
         shop_spell_prices.remove_at(index)
+        if Net.is_host():
+                mp_sync_shop.rpc(_mp_build_shop_payload())
 
 func buy_weapon(index: int) -> void:
+        # 客户端：转发给主机结算
+        if Net.is_client():
+                mp_buy_weapon.rpc_id(1, index)
+                return
         if index < 0 or index >= shop_weapons.size():
                 return
         var price := shop_weapon_prices[index]
@@ -294,6 +345,8 @@ func buy_weapon(index: int) -> void:
 
         shop_weapons.remove_at(index)
         shop_weapon_prices.remove_at(index)
+        if Net.is_host():
+                mp_sync_shop.rpc(_mp_build_shop_payload())
 
 func get_difficulty_mult() -> float:
         # 平衡调整：原指数曲线(1.15^(t/60))后期过陡；
@@ -301,12 +354,410 @@ func get_difficulty_mult() -> float:
         return clamp(1.0 + elapsed / 150.0, 1.0, 4.5)
 
 func _on_player_died() -> void:
+        # 联机（主机）：任一玩家死亡 = 全员结束（合作共享命运）
+        if Net.is_host():
+                _mp_end_game_for_all()
+                return
         game_over = true
         _sync_pause()
         game_over_ui.visible = true
         game_over_ui.refresh()
 
 func restart() -> void:
+        if Net.is_active():
+                if Net.is_host():
+                        _mp_restart_all()
+                else:
+                        mp_restart_request.rpc_id(1)
+                return
         get_tree().paused = false
         get_tree().reload_current_scene()
-        
+
+# ============================================================
+# 联机模块（主机权威 / host-authoritative co-op）
+#   - 主机：运行全部模拟（刷怪、子弹、伤害、商店、货币）
+#   - 客户端：本地预测自己移动，其余状态来自 10Hz 快照
+# ============================================================
+
+# ---------- 主机 ----------
+func _mp_host_ready() -> void:
+        bullet_pool.net_main = self
+        multiplayer.peer_connected.connect(_mp_peer_connected)
+        multiplayer.peer_disconnected.connect(_mp_peer_disconnected)
+
+func _mp_peer_connected(id: int) -> void:
+        # 为新加入的玩家生成分身（主机代为模拟）
+        var avatar: Player = MP_PLAYER_SCENE.instantiate()
+        avatar.remote_controlled = true
+        add_child(avatar)
+        avatar.global_position = player.global_position + Vector2(60, 0)
+        # 禁用分身相机，避免与主机相机冲突
+        var cam := avatar.get_node_or_null("Camera2D")
+        if cam:
+                cam.enabled = false
+        var rw := avatar.get_node("Weapon") as Weapon
+        rw.remote_controlled = true
+        # 远程玩家从初始小鸡枪开始（与单机一致）
+        var basic := Catalogs.make_projectile("鸡弹", 7.0, 500.0, 1, 0.0, Color(1, 0.9, 0.3))
+        var wdata := Catalogs.make_weapon("小鸡枪", 2, 0.20)
+        wdata.slots[0] = basic
+        rw.setup(self, bullet_pool, wdata)
+        _mp_remote_weapon_data[id] = wdata
+        avatar.died.connect(func(): _mp_remote_died(id))
+        _mp_remote_players[id] = avatar
+        _mp_remote_weapons[id] = rw
+        # 给新玩家同步商店与游戏状态
+        mp_sync_shop.rpc_id(id, _mp_build_shop_payload())
+
+func _mp_peer_disconnected(id: int) -> void:
+        if _mp_remote_players.has(id):
+                var p = _mp_remote_players[id]
+                if is_instance_valid(p):
+                        p.queue_free()
+                _mp_remote_players.erase(id)
+                _mp_remote_weapons.erase(id)
+                _mp_remote_weapon_data.erase(id)
+
+func _mp_remote_died(id: int) -> void:
+        # 任一玩家死亡 = 全员游戏结束（合作共享命运）
+        _mp_end_game_for_all()
+
+func _mp_end_game_for_all() -> void:
+        mp_game_over.rpc()
+        game_over = true
+        _sync_pause()
+        game_over_ui.visible = true
+        game_over_ui.refresh()
+
+# 主机每 0.1s 广播一次世界快照
+func _mp_host_snapshot(delta: float) -> void:
+        if game_over:
+                return
+        _mp_snap_timer += delta
+        if _mp_snap_timer < MP_SNAPSHOT_INTERVAL:
+                return
+        _mp_snap_timer = 0.0
+
+        # 敌人：给新怪分配网络 id
+        var enemies_flat := PackedFloat32Array()
+        var nodes := enemy_container.get_children()
+        for node in nodes:
+                var e := node as Enemy
+                if e == null or e.dead:
+                        continue
+                if not _mp_enemy_ids.has(e):
+                        _mp_enemy_ids[e] = _mp_next_enemy_id
+                        _mp_next_enemy_id += 1
+                enemies_flat.append(float(_mp_enemy_ids[e]))
+                enemies_flat.append(e.global_position.x)
+                enemies_flat.append(e.global_position.y)
+                enemies_flat.append(e.health)
+                enemies_flat.append(e.max_health)
+                var sc := 1.0
+                if e.sprite:
+                        sc = e.sprite.scale.x
+                enemies_flat.append(sc)
+                if e.sprite:
+                        enemies_flat.append(e.sprite.modulate.r)
+                        enemies_flat.append(e.sprite.modulate.g)
+                        enemies_flat.append(e.sprite.modulate.b)
+                else:
+                        enemies_flat.append(1.0)
+                        enemies_flat.append(1.0)
+                        enemies_flat.append(1.0)
+        # 清理已消失敌人的 id
+        for e in _mp_enemy_ids.keys():
+                if not is_instance_valid(e):
+                        _mp_enemy_ids.erase(e)
+
+        # 玩家：[peer_id, x, y, hp, max_hp]
+        var players_flat := PackedFloat32Array()
+        players_flat.append(1.0)
+        players_flat.append(player.global_position.x)
+        players_flat.append(player.global_position.y)
+        players_flat.append(player.hp)
+        players_flat.append(player.max_hp)
+        for pid in _mp_remote_players:
+                var p = _mp_remote_players[pid]
+                if not is_instance_valid(p):
+                        continue
+                players_flat.append(float(pid))
+                players_flat.append(p.global_position.x)
+                players_flat.append(p.global_position.y)
+                players_flat.append(p.hp)
+                players_flat.append(p.max_hp)
+
+        mp_snapshot.rpc(enemies_flat, players_flat, currency, elapsed, rate)
+
+# 主机开火时由 BulletPool 回调：把子弹广播给所有客户端
+func mp_broadcast_bullet(pos: Vector2, vel: Vector2, color: Color) -> void:
+        mp_bullet.rpc(pos, vel, color)
+
+# ---------- 客户端 ----------
+func _mp_client_ready() -> void:
+        # 客户端不模拟刷怪/碰撞/开火，只做本地预测和视觉渲染
+        weapon.set_process(false)
+        spawner.set_process(false)
+        # 向主机请求初始商店与状态
+        mp_request_state.rpc_id(1)
+
+func _mp_client_process(_delta: float) -> void:
+        # 敌人平滑插值（快照 10Hz -> 本地渲染 60Hz）
+        for id in _mp_client_enemies:
+                var e = _mp_client_enemies[id]
+                if not is_instance_valid(e):
+                        continue
+                var target: Vector2 = e.get_meta("target_pos", e.global_position)
+                e.global_position = e.global_position.lerp(target, 0.3)
+
+func _mp_client_physics(_delta: float) -> void:
+        if game_over:
+                return
+        # 采集本地输入并发给主机（移动 + 瞄准 + 开火）
+        var move := Vector2.ZERO
+        var aim := Vector2.RIGHT
+        var firing := true
+        if touch_controls != null and touch_controls.enabled:
+                move = touch_controls.move_vector
+                firing = touch_controls.is_firing
+                if touch_controls.aim_vector.length() > 0.1:
+                        aim = touch_controls.aim_vector.normalized()
+        else:
+                move = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+                aim = (get_global_mouse_position() - player.global_position).normalized()
+        mp_input.rpc_id(1, move, aim, firing)
+
+# ---------- RPC：客户端 -> 主机 ----------
+@rpc("any_peer", "unreliable")
+func mp_input(move: Vector2, aim: Vector2, firing: bool) -> void:
+        var id := multiplayer.get_remote_sender_id()
+        var p = _mp_remote_players.get(id)
+        var w = _mp_remote_weapons.get(id)
+        if p != null and is_instance_valid(p):
+                p.net_move = move
+        if w != null and is_instance_valid(w):
+                w.net_aim = aim
+                w.net_firing = firing
+
+@rpc("any_peer", "reliable")
+func mp_buy_spell(index: int) -> void:
+        # 主机权威结算：钱与货架都在主机侧校验
+        buy_spell(index)
+
+@rpc("any_peer", "reliable")
+func mp_buy_weapon(index: int) -> void:
+        # 主机权威结算：武器购买归属于发起购买的玩家分身
+        var id := multiplayer.get_remote_sender_id()
+        if not _mp_remote_players.has(id):
+                return
+        if index < 0 or index >= shop_weapons.size():
+                return
+        var price := shop_weapon_prices[index]
+        if currency < price:
+                return
+        currency -= price
+        var old: WeaponData = _mp_remote_weapon_data.get(id, null)
+        var new_w: WeaponData = shop_weapons[index]
+        if old != null:
+                # 沿用旧武器前 N 个槽的法术，避免"买武器丢法术"
+                var copy_count := mini(old.slots.size(), new_w.slots.size())
+                for i in range(copy_count):
+                        if old.slots[i] != null:
+                                new_w.slots[i] = old.slots[i]
+        _mp_remote_weapon_data[id] = new_w
+        var rw = _mp_remote_weapons.get(id)
+        if rw != null and is_instance_valid(rw):
+                rw.set_weapon(new_w)
+        shop_weapons.remove_at(index)
+        shop_weapon_prices.remove_at(index)
+        mp_sync_shop.rpc(_mp_build_shop_payload())
+
+@rpc("any_peer", "reliable")
+func mp_request_state() -> void:
+        # 新客户端加入时推送商店与状态
+        var id := multiplayer.get_remote_sender_id()
+        mp_sync_shop.rpc_id(id, _mp_build_shop_payload())
+
+@rpc("any_peer", "reliable")
+func mp_restart_request() -> void:
+        if Net.is_host():
+                _mp_restart_all()
+
+# ---------- RPC：主机 -> 客户端 ----------
+@rpc("authority", "unreliable")
+func mp_snapshot(enemies_flat: PackedFloat32Array, players_flat: PackedFloat32Array,
+                cur: float, el: float, rt: float) -> void:
+        currency = cur
+        elapsed = el
+        rate = rt
+        _mp_apply_enemies(enemies_flat)
+        _mp_apply_players(players_flat)
+        if not _mp_connected:
+                _mp_connected = true
+
+@rpc("authority", "unreliable")
+func mp_bullet(pos: Vector2, vel: Vector2, color: Color) -> void:
+        # 客户端：仅生成视觉子弹（伤害由主机结算）
+        bullet_pool.spawn(pos, vel, 0.0, 2.0, color)
+
+@rpc("authority", "reliable")
+func mp_game_over() -> void:
+        game_over = true
+        _sync_pause()
+        game_over_ui.visible = true
+        game_over_ui.refresh()
+
+@rpc("authority", "reliable")
+func mp_back_to_menu() -> void:
+        Net.reset()
+        get_tree().change_scene_to_file("res://start.tscn")
+
+@rpc("authority", "reliable")
+func mp_sync_shop(payload: Dictionary) -> void:
+        _mp_apply_shop_payload(payload)
+        if shop_ui.visible:
+                shop_ui.refresh()
+
+# ---------- 客户端状态应用 ----------
+func _mp_apply_enemies(flat: PackedFloat32Array) -> void:
+        var seen := {}
+        var i := 0
+        var step := 9
+        while i + step <= flat.size():
+                var id := int(flat[i])
+                seen[id] = true
+                var e = _mp_client_enemies.get(id)
+                if e == null or not is_instance_valid(e):
+                        e = MP_ENEMY_SCENE.instantiate()
+                        e.target = null
+                        enemy_container.add_child(e)
+                        _mp_client_enemies[id] = e
+                        # 新建时直接就位，避免从 (0,0) 飞过来
+                        e.global_position = Vector2(flat[i + 1], flat[i + 2])
+                # 已存在：只更新目标位置，由 _mp_client_process 插值平滑过去
+                e.set_meta("target_pos", Vector2(flat[i + 1], flat[i + 2]))
+                e.health = flat[i + 3]
+                e.max_health = flat[i + 4]
+                if e.sprite:
+                        e.sprite.scale = Vector2(flat[i + 5], flat[i + 5])
+                        e.sprite.modulate = Color(flat[i + 6], flat[i + 7], flat[i + 8])
+                if e.health_bar:
+                        e.health_bar.max_value = e.max_health
+                        e.health_bar.value = max(e.health, 0.0)
+                        e.health_bar.visible = e.health < e.max_health
+                i += step
+        # 移除已消失的敌人
+        for id in _mp_client_enemies.keys():
+                if not seen.has(id):
+                        var e = _mp_client_enemies[id]
+                        if is_instance_valid(e):
+                                e.queue_free()
+                        _mp_client_enemies.erase(id)
+
+func _mp_apply_players(flat: PackedFloat32Array) -> void:
+        var my_id := multiplayer.get_unique_id()
+        var i := 0
+        while i + 5 <= flat.size():
+                var pid := int(flat[i])
+                var pos := Vector2(flat[i + 1], flat[i + 2])
+                var hp := flat[i + 3]
+                var max_hp := flat[i + 4]
+                if pid == my_id:
+                        # 自己：本地预测为主，偏差过大时纠正
+                        player.hp = hp
+                        player.max_hp = max_hp
+                        if player.global_position.distance_squared_to(pos) > 100.0 * 100.0:
+                                player.global_position = pos
+                else:
+                        # 其他玩家（主机或其他客户端）：渲染分身
+                        var av = _mp_client_avatars.get(pid)
+                        if av == null or not is_instance_valid(av):
+                                av = MP_PLAYER_SCENE.instantiate()
+                                av.remote_controlled = true
+                                add_child(av)
+                                var cam := av.get_node_or_null("Camera2D")
+                                if cam:
+                                        cam.enabled = false
+                                _mp_client_avatars[pid] = av
+                        av.global_position = pos
+                i += 5
+
+# ---------- 商店同步 ----------
+func _mp_build_shop_payload() -> Dictionary:
+        var spell_names: Array[String] = []
+        var spell_prices: Array[int] = []
+        var spell_types: Array[int] = []   # 0=投射物 1=修正
+        for i in shop_spells.size():
+                var s: SpellData = shop_spells[i]
+                spell_names.append(s.spell_name)
+                spell_prices.append(shop_spell_prices[i])
+                spell_types.append(1 if s.type == SpellData.Type.MODIFIER else 0)
+        var weapon_names: Array[String] = []
+        var weapon_slots: Array[int] = []
+        var weapon_delays: Array[float] = []
+        var weapon_prices: Array[int] = []
+        for i in shop_weapons.size():
+                var w: WeaponData = shop_weapons[i]
+                weapon_names.append(w.weapon_name)
+                weapon_slots.append(w.slot_count)
+                weapon_delays.append(w.cast_delay)
+                weapon_prices.append(shop_weapon_prices[i])
+        var owned_names: Array[String] = []
+        for s in owned_spells:
+                owned_names.append(s.spell_name)
+        return {
+                "currency": currency,
+                "spell_names": spell_names,
+                "spell_prices": spell_prices,
+                "spell_types": spell_types,
+                "weapon_names": weapon_names,
+                "weapon_slots": weapon_slots,
+                "weapon_delays": weapon_delays,
+                "weapon_prices": weapon_prices,
+                "owned_names": owned_names,
+                "weapon_name": current_weapon.weapon_name,
+                "weapon_slot_count": current_weapon.slot_count,
+                "weapon_cast_delay": current_weapon.cast_delay,
+        }
+
+func _mp_apply_shop_payload(p: Dictionary) -> void:
+        currency = p["currency"]
+        # 重建货架（仅用于展示与购买索引，真实结算在主机）
+        shop_spells.clear()
+        shop_spell_prices.clear()
+        var spell_names: Array = p["spell_names"]
+        var spell_prices: Array = p["spell_prices"]
+        var spell_types: Array = p["spell_types"]
+        for i in spell_names.size():
+                var s: SpellData
+                if spell_types[i] == 1:
+                        s = Catalogs.make_modifier(spell_names[i], 1.0, 1.0, 0)
+                else:
+                        s = Catalogs.make_projectile(spell_names[i], 1.0, 1.0, 1, 0.0, Color.WHITE)
+                shop_spells.append(s)
+                shop_spell_prices.append(int(spell_prices[i]))
+        shop_weapons.clear()
+        shop_weapon_prices.clear()
+        var weapon_names: Array = p["weapon_names"]
+        var weapon_slots: Array = p["weapon_slots"]
+        var weapon_delays: Array = p["weapon_delays"]
+        var weapon_prices: Array = p["weapon_prices"]
+        for i in weapon_names.size():
+                var w := Catalogs.make_weapon(weapon_names[i], int(weapon_slots[i]), weapon_delays[i])
+                shop_weapons.append(w)
+                shop_weapon_prices.append(int(weapon_prices[i]))
+        # 已拥有法术（编辑器在客户端禁用，仅作展示）
+        owned_spells.clear()
+        for n in p["owned_names"]:
+                owned_spells.append(Catalogs.make_projectile(n, 1.0, 1.0, 1, 0.0, Color.WHITE))
+        # 当前武器（HUD 展示用）
+        current_weapon = Catalogs.make_weapon(p["weapon_name"], int(p["weapon_slot_count"]), p["weapon_cast_delay"])
+
+# ---------- 重开 / 返回主菜单 ----------
+func _mp_restart_all() -> void:
+        # 先通知客户端回主菜单，再关闭网络
+        mp_back_to_menu.rpc()
+        await get_tree().create_timer(0.2).timeout
+        Net.reset()
+        get_tree().change_scene_to_file("res://start.tscn")
+

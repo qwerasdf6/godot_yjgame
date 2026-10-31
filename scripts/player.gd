@@ -10,12 +10,18 @@ var hp: float = 100.0
 var invuln_timer: float = 0.0
 var touch_controls = null
 
+# ---- 联机：由主机上的远程输入驱动的分身（不读本地键盘）----
+var remote_controlled: bool = false
+var net_move: Vector2 = Vector2.ZERO
+
 func _ready() -> void:
         add_to_group("player")
         
 func _physics_process(_delta: float) -> void:
         var input_vec := Vector2.ZERO
-        if touch_controls != null and touch_controls.enabled:
+        if remote_controlled:
+                input_vec = net_move
+        elif touch_controls != null and touch_controls.enabled:
                 input_vec = touch_controls.move_vector
         else:
                 input_vec = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
@@ -41,6 +47,9 @@ func _process(delta: float) -> void:
                         $Sprite2D.frame = 0
 
 func take_damage(amount: float) -> void:
+        # 联机客户端：伤害由主机结算，本地不扣血
+        if Net.is_client():
+                return
         if invuln_timer > 0.0 or hp <= 0.0:
                 return
         hp -= amount
