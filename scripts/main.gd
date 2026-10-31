@@ -714,9 +714,14 @@ func _mp_apply_players(flat: PackedFloat32Array) -> void:
                         else:
                                 # 记录快照目标位置，_process 中插值平滑
                                 av.set_meta("target_pos", pos)
-                                # 用两次快照的位移估算移动方向，驱动走路动画
+                                # 位移小于死区（4px）视为静止：net_move 归零。
+                                # 否则插值残差（亚像素级）会让分身"原地走路"并轻微抖动
                                 var step: Vector2 = pos - av.global_position
-                                av.net_move = step.limit_length(1.0)
+                                if step.length() < 4.0:
+                                        av.net_move = Vector2.ZERO
+                                else:
+                                        # 快照间隔约 0.1s，换算成速度向量再限幅
+                                        av.net_move = (step / 0.1).limit_length(1.0)
                         av.hp = hp
                         av.max_hp = max_hp
                 i += 5
