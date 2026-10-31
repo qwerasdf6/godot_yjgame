@@ -1,0 +1,16 @@
+extends CanvasLayer
+
+@onready var draw_root: Control = $DrawRoot
+@onready var toggle_btn: Button = $ToggleButton
+
+func _ready() -> void:
+	layer = 10
+	draw_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	draw_root.size = get_viewport().get_visible_rect().size
+	draw_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+
+
+func _on_toggle_button_pressed() -> void:
+	print(1)
+	draw_root.set_enabled(not draw_root.enabled)

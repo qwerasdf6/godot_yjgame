@@ -1,0 +1,5 @@
+font: minecraft.ttf (https://www.dafont.com/minecraft.font)
+music: https://opengameart.org/content/happy-tune
+tool sounds: https://opengameart.org/content/12-player-movement-sfx
+walk sounds: https://opengameart.org/content/grass-foot-step-sounds-yo-frankie
+slime: https://opengameart.org/content/impact

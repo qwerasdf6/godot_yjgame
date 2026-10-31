@@ -1,0 +1,56 @@
+[gd_scene format=3 uid="uid://4k2ggaooomsx"]
+
+[ext_resource type="Texture2D" uid="uid://bivprhjbqjegu" path="res://asstes/graphics/backgrounds/background2.png" id="1_0fbet"]
+[ext_resource type="Script" uid="uid://cujve2i80h5xu" path="res://control.gd" id="1_ee4bf"]
+[ext_resource type="FontFile" uid="uid://d4nr0nj047aav" path="res://asstes/fonts/Better VCR 9.0.1.ttf" id="2_62e2m"]
+[ext_resource type="FontFile" uid="uid://dx16yyv2vdipb" path="res://asstes/fonts/Crackman.otf" id="3_qtu10"]
+[ext_resource type="AudioStream" uid="uid://d4llwj0oyfcjv" path="res://asstes/audio2.ogg" id="5_oiuna"]
+
+[node name="start" type="Control" unique_id=426705351]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ee4bf")
+
+[node name="bg" type="Sprite2D" parent="." unique_id=1811956343]
+position = Vector2(788.5, 422.99997)
+scale = Vector2(2.4578123, 2.3333335)
+texture = ExtResource("1_0fbet")
+
+[node name="Label2" type="Label" parent="." unique_id=1201167567]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.3029514
+anchor_top = 0.7515433
+anchor_right = 0.7760417
+anchor_bottom = 0.875
+offset_top = -3.0517578e-05
+theme_override_fonts/font = ExtResource("3_qtu10")
+theme_override_font_sizes/font_size = 42
+text = "点击任意处开始游戏"
+horizontal_alignment = 1
+metadata/_edit_use_anchors_ = true
+
+[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=1846479563]
+stream = ExtResource("5_oiuna")
+autoplay = true
+
+[node name="Label" type="Label" parent="." unique_id=903337044]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.3706597
+anchor_top = 0.25154322
+anchor_right = 0.7161458
+anchor_bottom = 0.46450618
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.19607843, 1, 0.23921569, 1)
+theme_override_fonts/font = ExtResource("2_62e2m")
+theme_override_font_sizes/font_size = 100
+text = "野鸡游戏"
+horizontal_alignment = 1
+vertical_alignment = 1
+metadata/_edit_use_anchors_ = true

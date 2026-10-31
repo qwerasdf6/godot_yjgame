@@ -1,0 +1,123 @@
+extends Control
+
+var main: MainNode = null
+var container: VBoxContainer = null
+var scroll: ScrollContainer = null
+
+func setup(m: MainNode) -> void:
+	main = m
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0, 0, 0, 0.7)
+	add_child(bg)
+
+	var panel := Panel.new()
+	panel.anchor_left = 0.12
+	panel.anchor_top = 0.08
+	panel.anchor_right = 0.88
+	panel.anchor_bottom = 0.92
+	add_child(panel)
+
+	# 用 ScrollContainer 包裹，避免小屏或货架变长时内容溢出被裁
+	scroll = ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.offset_left = 20
+	scroll.offset_top = 20
+	scroll.offset_right = -20
+	scroll.offset_bottom = -20
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+
+	container = VBoxContainer.new()
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_theme_constant_override("separation", 6)
+	scroll.add_child(container)
+
+func refresh() -> void:
+	# 先 remove_child 再 queue_free，避免同帧新旧节点并存导致重复显示
+	for c in container.get_children():
+		container.remove_child(c)
+		c.queue_free()
+
+	var title := Label.new()
+	title.text = "商店   (Tab / Esc 关闭)"
+	title.add_theme_font_size_override("font_size", 20)
+	container.add_child(title)
+
+	var cur := Label.new()
+	cur.text = "货币: $%d" % int(main.currency)
+	container.add_child(cur)
+
+	container.add_child(_spacer(6))
+
+	var h1 := Label.new()
+	h1.text = "— 技能 —"
+	container.add_child(h1)
+
+	if main.shop_spells.is_empty():
+		var e := Label.new()
+		e.text = "  (已售罄)"
+		container.add_child(e)
+	else:
+		for i in main.shop_spells.size():
+			var s: SpellData = main.shop_spells[i]
+			var price: int = main.shop_spell_prices[i]
+			var btn := Button.new()
+			var prefix := "[插件] " if s.type == SpellData.Type.PROJECTILE else "[增益]  "
+			btn.text = "%s%s    $%d" % [prefix, s.spell_name, price]
+			btn.custom_minimum_size = Vector2(0, 52)
+			btn.add_theme_font_size_override("font_size", 18)
+			btn.disabled = main.currency < price
+			btn.focus_mode = Control.FOCUS_NONE
+			btn.pressed.connect(_on_buy_spell.bind(i))
+			container.add_child(btn)
+
+	container.add_child(_spacer(6))
+
+	var h2 := Label.new()
+	h2.text = "— 武器 —"
+	container.add_child(h2)
+
+	if main.shop_weapons.is_empty():
+		var e := Label.new()
+		e.text = "  (已售罄)"
+		container.add_child(e)
+	else:
+		for i in main.shop_weapons.size():
+			var w: WeaponData = main.shop_weapons[i]
+			var price: int = main.shop_weapon_prices[i]
+			var btn := Button.new()
+			btn.text = "%s    (%d个技能槽, %.2fs释放冷却)    $%d" % [w.weapon_name, w.slot_count, w.cast_delay, price]
+			btn.custom_minimum_size = Vector2(0, 52)
+			btn.add_theme_font_size_override("font_size", 18)
+			btn.disabled = main.currency < price
+			btn.focus_mode = Control.FOCUS_NONE
+			btn.pressed.connect(_on_buy_weapon.bind(i))
+			container.add_child(btn)
+
+	var close_btn := Button.new()
+	close_btn.text = "关闭"
+	close_btn.custom_minimum_size = Vector2(0, 52)
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.pressed.connect(func(): main._apply_ui_state(MainNode.UIState.NONE))
+	container.add_child(close_btn)
+
+func _spacer(h: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, h)
+	return c
+
+func _on_buy_spell(i: int) -> void:
+	main.buy_spell(i)
+	# 购买后立即补货，货架保持满额（依赖 MainNode._ensure_stock()）
+	main._ensure_stock()
+	refresh()
+
+func _on_buy_weapon(i: int) -> void:
+	main.buy_weapon(i)
+	main._ensure_stock()
+	refresh()
+	
