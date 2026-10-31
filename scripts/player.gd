@@ -40,7 +40,12 @@ func _process(delta: float) -> void:
         var move_vec: Vector2 = net_move if remote_controlled else velocity / max(move_speed, 1.0)
         var sprite: AnimatedSprite2D = $Sprite2D
         if move_vec.length_squared() > 0.04:
-                sprite.flip_h = move_vec.x > 0
+                # 朝向加死区：水平分量过小时保持原朝向，
+                # 避免斜向/纵向移动时快照噪声导致左右反复翻转（"左右抽风"）
+                if move_vec.x > 0.25:
+                        sprite.flip_h = true
+                elif move_vec.x < -0.25:
+                        sprite.flip_h = false
                 if sprite.animation != &"left":
                         sprite.animation = &"left"
                 if not sprite.is_playing():
