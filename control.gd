@@ -12,7 +12,7 @@ func _ready() -> void:
         mouse_filter = Control.MOUSE_FILTER_IGNORE
         _build_mp_panel()
 
-# 点击空白处（或按任意键）进入单机模式
+# 点击任意处，或按指定的开始键（Enter / 空格）进入单机模式
 func _unhandled_input(event):
         if _busy:
                 return
@@ -22,8 +22,8 @@ func _unhandled_input(event):
         elif event is InputEventMouseButton and event.pressed:
                 should_start = true
         elif event is InputEventKey and event.pressed and not event.echo:
-                # 仅响应无修饰键的按键，避免误触
-                if not event.alt_pressed and not event.ctrl_pressed and not event.shift_pressed and not event.meta_pressed:
+                # 开始键：回车 / 小键盘回车 / 空格
+                if event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
                         should_start = true
         if should_start:
                 get_viewport().set_input_as_handled()
