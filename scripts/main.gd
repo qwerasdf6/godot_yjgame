@@ -519,13 +519,19 @@ func _mp_client_process(_delta: float) -> void:
                         continue
                 var target: Vector2 = e.get_meta("target_pos", e.global_position)
                 e.global_position = e.global_position.lerp(target, 0.3)
-        # 其他玩家分身同样插值，避免快照到达时位置跳变
+        # 其他玩家分身：向"外推后的目标点"做时间归一的光滑追踪。
+        # 目标点 = 快照位置 + 速度 × 一个快照周期，使匀速移动时分身轨迹连续，
+        # 消除纯 lerp 追 10Hz 快照时的锯齿抖动
         for slot in _mp_client_avatars:
                 var av = _mp_client_avatars[slot]
                 if not is_instance_valid(av):
                         continue
                 var t: Vector2 = av.get_meta("target_pos", av.global_position)
-                av.global_position = av.global_position.lerp(t, 0.3)
+                var v: Vector2 = av.get_meta("target_vel", Vector2.ZERO)
+                var ahead: Vector2 = t + v * MP_SNAPSHOT_INTERVAL
+                # 平滑系数按帧时间归一（60fps ≈ 0.22，与原 lerp(0.3) 接近但帧率无关）
+                var alpha: float = 1.0 - exp(-14.0 * _delta)
+                av.global_position = av.global_position.lerp(ahead, alpha)
 
 func _mp_client_physics(_delta: float) -> void:
         if game_over:
@@ -712,16 +718,23 @@ func _mp_apply_players(flat: PackedFloat32Array) -> void:
                                 av.global_position = pos
                                 _mp_client_avatars[slot] = av
                         else:
-                                # 记录快照目标位置，_process 中插值平滑
+                                # 快照到达：记录目标位置与速度（外推用）
+                                var prev_target: Vector2 = av.get_meta("target_pos", pos)
+                                # 速度 = 两次快照位移 / 快照间隔，用于把目标向前外推，
+                                # 消除"追上目标→停下等下一个快照"造成的锯齿抖动
+                                var vel: Vector2 = (pos - prev_target) / max(MP_SNAPSHOT_INTERVAL, 0.01)
+                                if vel.length() > 600.0:
+                                        vel = vel.normalized() * 600.0
                                 av.set_meta("target_pos", pos)
+                                av.set_meta("target_vel", vel)
                                 # 位移小于死区（4px）视为静止：net_move 归零。
                                 # 否则插值残差（亚像素级）会让分身"原地走路"并轻微抖动
                                 var step: Vector2 = pos - av.global_position
                                 if step.length() < 4.0:
                                         av.net_move = Vector2.ZERO
                                 else:
-                                        # 快照间隔约 0.1s，换算成速度向量再限幅
-                                        av.net_move = (step / 0.1).limit_length(1.0)
+                                        # net_move 取外推速度的方向（归一化限幅）
+                                        av.net_move = (vel / max(220.0, 1.0)).limit_length(1.0)
                         av.hp = hp
                         av.max_hp = max_hp
                 i += 5
