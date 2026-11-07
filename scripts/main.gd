@@ -19,8 +19,9 @@ const MP_PLAYER_SCENE := preload("res://scenes/Player.tscn")
 const MP_ENEMY_SCENE := preload("res://scenes/Enemy.tscn")
 const MP_SNAPSHOT_INTERVAL := 0.1   # 快照频率 10Hz
 
-# 货币成长曲线：每 120 秒增速 +1/s，封顶 8/s
-const CURRENCY_RATE_CAP := 8.0
+# 货币成长曲线：起步 2/s，每 60 秒 +1/s，封顶 15/s
+const CURRENCY_RATE_BASE := 2.0
+const CURRENCY_RATE_CAP := 15.0
 
 @onready var player: Player = $Player
 @onready var bullet_pool: BulletPool = $BulletPool
@@ -147,8 +148,8 @@ func _process(delta: float) -> void:
 		if get_tree().paused:
 				return
 		elapsed += delta
-		# 货币曲线：增速随时间成长，与刷怪率节奏对齐（每 120s +1/s，原 200s）
-		rate = min(CURRENCY_RATE_CAP, 1.0 + elapsed * 0.00833)
+		# 货币曲线：起步 2/s，每 60 秒 +1/s，封顶 15/s
+		rate = min(CURRENCY_RATE_CAP, CURRENCY_RATE_BASE + elapsed / 60.0)
 		accum += delta * rate
 		while accum >= 1.0:
 				accum -= 1.0
