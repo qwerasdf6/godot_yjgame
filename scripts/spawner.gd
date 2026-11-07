@@ -12,8 +12,8 @@ var main: Node = null
 var player: Node2D = null
 var enemy_container: Node2D = null
 var timer: float = 0.0
-var spawn_interval: float = 0.6
-var max_enemies: int = 60
+var spawn_interval: float = 1.6
+var max_enemies: int = 36
 var spawn_radius: float = 600.0
 
 func setup(m: Node, p: Node2D, c: Node2D) -> void:
