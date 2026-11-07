@@ -10,7 +10,7 @@ var active: bool = false
 var prev_position: Vector2 = Vector2.ZERO
 var pool = null
 
-func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float, color: Color, owner_pool) -> void:
+func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float, color: Color, owner_pool, pierce_count := 0) -> void:
 	global_position = pos
 	prev_position = pos
 	velocity = vel
@@ -18,6 +18,10 @@ func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float, color: Color, ow
 	lifetime = life
 	modulate = color
 	pool = owner_pool
+	pierce = pierce_count
+	hit_enemies.clear()
+	# 穿透弹视觉上更大，割草感更强
+	scale = Vector2.ONE * clamp(1.0 + pierce_count * 0.12, 1.0, 3.0)
 	active = true
 	visible = true
 	set_process(true)
