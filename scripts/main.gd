@@ -626,8 +626,8 @@ func mp_buy_weapon(index: int) -> void:
 						if old.slots[i] != null:
 								new_w.slots[i] = old.slots[i]
 				var copy_mods := mini(old.mod_slots.size(), new_w.mod_slots.size())
-					for i in range(copy_mods):
-							if old.mod_slots[i] != null:
+				for i in range(copy_mods):
+						if old.mod_slots[i] != null:
 								new_w.mod_slots[i] = old.mod_slots[i]
 		_mp_remote_weapon_data[id] = new_w
 		var rw = _mp_remote_weapons.get(id)
