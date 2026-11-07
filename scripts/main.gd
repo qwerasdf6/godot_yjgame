@@ -8,11 +8,11 @@ const HIT_RADIUS_SQ := HIT_RADIUS * HIT_RADIUS
 const CONTACT_RADIUS := 24.0
 const CONTACT_RADIUS_SQ := CONTACT_RADIUS * CONTACT_RADIUS
 
-# 商店随机上架开关：true 时从池中随机抽货，购买后下次开店补货；
-# false 时所有池内物品一次性全部上架。
-const RANDOM_SHOP := true
-const SPELL_STOCK_COUNT := 4
-const WEAPON_STOCK_COUNT := 2
+# ---- 商店等级 ----
+# 商店不再随机刷新：按游戏时间解锁等级，上架所有已解锁且未购买的物品
+# 180 秒解锁 2 级，420 秒解锁 3 级
+const SHOP_TIER2_TIME := 180.0
+const SHOP_TIER3_TIME := 420.0
 
 # ---- 联机 ----
 const MP_PLAYER_SCENE := preload("res://scenes/Player.tscn")
@@ -50,11 +50,14 @@ var shop_spell_prices: Array[int] = []
 var shop_weapons: Array[WeaponData] = []
 var shop_weapon_prices: Array[int] = []
 
-# 未上架的库存池
+# 未购买的库存池（已购买的商品从池中永久移除）
 var spell_pool: Array[SpellData] = []
 var spell_price_pool: Array[int] = []
 var weapon_pool: Array[WeaponData] = []
 var weapon_price_pool: Array[int] = []
+# 每件商品的等级（与上方池子下标一一对应）
+var spell_tier_pool: Array[int] = []
+var weapon_tier_pool: Array[int] = []
 
 # 调试用：F3 重置
 var debug_hits: int = 0
@@ -102,44 +105,40 @@ func _init_loadout() -> void:
 
 func _init_shop() -> void:
 		# ---- 投射物 ----
-		_add_spell(Catalogs.make_projectile("散弹", 4.0, 450.0, 3, 0.3, Color(0.3, 1.0, 0.6)), 80)
-		_add_spell(Catalogs.make_projectile("重弹", 25.0, 350.0, 1, 0.0, Color(1.0, 0.4, 0.4)), 100)
-		_add_spell(Catalogs.make_projectile("蛋壳弹", 8.0, 420.0, 2, 0.15, Color(0.95, 0.93, 0.85)), 70)
-		_add_spell(Catalogs.make_projectile("鸡喙刺", 15.0, 700.0, 1, 0.0, Color(1.0, 0.55, 0.1)), 90)
-		_add_spell(Catalogs.make_projectile("羽毛扇", 5.0, 600.0, 5, 0.5, Color(0.4, 0.95, 0.95)), 110)
-		_add_spell(Catalogs.make_projectile("咯咯散", 3.0, 380.0, 6, 0.8, Color(1.0, 0.6, 0.85)), 100)
+		_add_spell(Catalogs.make_projectile("散弹", 4.0, 450.0, 3, 0.3, Color(0.3, 1.0, 0.6)), 80, 1)
+		_add_spell(Catalogs.make_projectile("重弹", 25.0, 350.0, 1, 0.0, Color(1.0, 0.4, 0.4)), 100, 2)
+		_add_spell(Catalogs.make_projectile("蛋壳弹", 8.0, 420.0, 2, 0.15, Color(0.95, 0.93, 0.85)), 70, 1)
+		_add_spell(Catalogs.make_projectile("鸡喙刺", 15.0, 700.0, 1, 0.0, Color(1.0, 0.55, 0.1)), 90, 2)
+		_add_spell(Catalogs.make_projectile("羽毛扇", 5.0, 600.0, 5, 0.5, Color(0.4, 0.95, 0.95)), 110, 3)
+		_add_spell(Catalogs.make_projectile("咯咯散", 3.0, 380.0, 6, 0.8, Color(1.0, 0.6, 0.85)), 100, 3)
 
 		# ---- 修正 ----
-		_add_spell(Catalogs.make_modifier("伤害强化", 1.5, 1.0, 0), 60)
-		_add_spell(Catalogs.make_modifier("加速修正", 1.0, 1.4, 0), 50)
-		_add_spell(Catalogs.make_modifier("多重+1", 1.0, 1.0, 1), 120)
-		_add_spell(Catalogs.make_modifier("锋利修正", 1.2, 1.2, 0), 70)
-		_add_spell(Catalogs.make_modifier("狂速修正", 0.85, 1.8, 0), 60)
-		_add_spell(Catalogs.make_modifier("多重+2", 0.8, 1.0, 2), 160)
+		_add_spell(Catalogs.make_modifier("伤害强化", 1.5, 1.0, 0), 60, 1)
+		_add_spell(Catalogs.make_modifier("加速修正", 1.0, 1.4, 0), 50, 1)
+		_add_spell(Catalogs.make_modifier("多重+1", 1.0, 1.0, 1), 120, 3)
+		_add_spell(Catalogs.make_modifier("锋利修正", 1.2, 1.2, 0), 70, 2)
+		_add_spell(Catalogs.make_modifier("狂速修正", 0.85, 1.8, 0), 60, 2)
+		_add_spell(Catalogs.make_modifier("多重+2", 0.8, 1.0, 2), 160, 3)
 
 		# ---- 武器 ----
-		_add_weapon(Catalogs.make_weapon("中鸡枪", 5, 0.15), 150)
-		_add_weapon(Catalogs.make_weapon("大鸡枪", 3, 0.08), 200)
-		_add_weapon(Catalogs.make_weapon("连发鸡枪", 2, 0.06), 180)
-		_add_weapon(Catalogs.make_weapon("鸡王炮", 6, 0.25), 260)
-		_add_weapon(Catalogs.make_weapon("精确鸡枪", 1, 0.10), 140)
-		_add_weapon(Catalogs.make_weapon("母鸡炮台", 8, 0.30), 320)
+		_add_weapon(Catalogs.make_weapon("中鸡枪", 5, 0.15), 150, 1)
+		_add_weapon(Catalogs.make_weapon("大鸡枪", 3, 0.08), 200, 2)
+		_add_weapon(Catalogs.make_weapon("连发鸡枪", 2, 0.06), 180, 2)
+		_add_weapon(Catalogs.make_weapon("鸡王炮", 6, 0.25), 260, 3)
+		_add_weapon(Catalogs.make_weapon("精确鸡枪", 1, 0.10), 140, 1)
+		_add_weapon(Catalogs.make_weapon("母鸡炮台", 8, 0.30), 320, 3)
 
-		if RANDOM_SHOP:
-				_ensure_stock()
-		else:
-				shop_spells = spell_pool.duplicate()
-				shop_spell_prices = spell_price_pool.duplicate()
-				shop_weapons = weapon_pool.duplicate()
-				shop_weapon_prices = weapon_price_pool.duplicate()
+		_ensure_stock()
 
-func _add_spell(s: SpellData, price: int) -> void:
+func _add_spell(s: SpellData, price: int, tier: int) -> void:
 		spell_pool.append(s)
 		spell_price_pool.append(price)
+		spell_tier_pool.append(tier)
 
-func _add_weapon(w: WeaponData, price: int) -> void:
+func _add_weapon(w: WeaponData, price: int, tier: int) -> void:
 		weapon_pool.append(w)
 		weapon_price_pool.append(price)
+		weapon_tier_pool.append(tier)
 
 func _process(delta: float) -> void:
 		if Net.is_client():
@@ -280,32 +279,29 @@ func _sync_pause() -> void:
 				return
 		get_tree().paused = (ui_state != UIState.NONE) or game_over
 
-# 从库存池随机抽货补满货架（RANDOM_SHOP 为 true 时生效）
+# 当前商店等级：随游戏时间解锁
+func get_shop_tier() -> int:
+		if elapsed >= SHOP_TIER3_TIME:
+				return 3
+		if elapsed >= SHOP_TIER2_TIME:
+				return 2
+		return 1
+
+# 按当前等级重铺货架：上架所有已解锁且未购买的物品
 func _ensure_stock() -> void:
-		if not RANDOM_SHOP:
-				return
-		while shop_spells.size() < SPELL_STOCK_COUNT and not spell_pool.is_empty():
-				_draw_spell()
-		while shop_weapons.size() < WEAPON_STOCK_COUNT and not weapon_pool.is_empty():
-				_draw_weapon()
-
-func _draw_spell() -> void:
-		if spell_pool.is_empty():
-				return
-		var idx := randi() % spell_pool.size()
-		shop_spells.append(spell_pool[idx])
-		shop_spell_prices.append(spell_price_pool[idx])
-		spell_pool.remove_at(idx)
-		spell_price_pool.remove_at(idx)
-
-func _draw_weapon() -> void:
-		if weapon_pool.is_empty():
-				return
-		var idx := randi() % weapon_pool.size()
-		shop_weapons.append(weapon_pool[idx])
-		shop_weapon_prices.append(weapon_price_pool[idx])
-		weapon_pool.remove_at(idx)
-		weapon_price_pool.remove_at(idx)
+		var tier := get_shop_tier()
+		shop_spells.clear()
+		shop_spell_prices.clear()
+		for i in spell_pool.size():
+				if spell_tier_pool[i] <= tier:
+					shop_spells.append(spell_pool[i])
+					shop_spell_prices.append(spell_price_pool[i])
+		shop_weapons.clear()
+		shop_weapon_prices.clear()
+		for i in weapon_pool.size():
+				if weapon_tier_pool[i] <= tier:
+					shop_weapons.append(weapon_pool[i])
+					shop_weapon_prices.append(weapon_price_pool[i])
 
 func buy_spell(index: int) -> void:
 		# 客户端：转发给主机结算
@@ -319,6 +315,11 @@ func buy_spell(index: int) -> void:
 				return
 		currency -= price
 		owned_spells.append(shop_spells[index])
+		var pool_idx := spell_pool.find(shop_spells[index])
+		if pool_idx >= 0:
+				spell_pool.remove_at(pool_idx)
+				spell_price_pool.remove_at(pool_idx)
+				spell_tier_pool.remove_at(pool_idx)
 		shop_spells.remove_at(index)
 		shop_spell_prices.remove_at(index)
 		if Net.is_host():
@@ -352,10 +353,18 @@ func buy_weapon(index: int) -> void:
 		current_weapon = new_weapon
 		weapon.set_weapon(current_weapon)
 
+		_pool_remove_weapon(shop_weapons[index])
 		shop_weapons.remove_at(index)
 		shop_weapon_prices.remove_at(index)
 		if Net.is_host():
 				mp_sync_shop.rpc(_mp_build_shop_payload())
+
+func _pool_remove_weapon(w: WeaponData) -> void:
+		var pool_idx := weapon_pool.find(w)
+		if pool_idx >= 0:
+				weapon_pool.remove_at(pool_idx)
+				weapon_price_pool.remove_at(pool_idx)
+				weapon_tier_pool.remove_at(pool_idx)
 
 func get_difficulty_mult() -> float:
 		# 平衡调整：原指数曲线(1.15^(t/60))后期过陡；

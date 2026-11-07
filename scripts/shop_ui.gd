@@ -44,10 +44,21 @@ func refresh() -> void:
 		container.remove_child(c)
 		c.queue_free()
 
+	var tier := main.get_shop_tier()
 	var title := Label.new()
-	title.text = "商店   (Tab / Esc 关闭)"
+	title.text = "商店 Lv.%d   (Tab / Esc 关闭)" % tier
 	title.add_theme_font_size_override("font_size", 20)
 	container.add_child(title)
+
+	# 下一级解锁提示
+	if tier < 3:
+		var need: int = 2 if tier == 1 else 3
+		var left: float = (MainNode.SHOP_TIER2_TIME if tier == 1 else MainNode.SHOP_TIER3_TIME) - main.elapsed
+		var hint := Label.new()
+		hint.text = "等级 %d 将于 %d 秒后解锁" % [need, int(ceil(left))]
+		hint.add_theme_font_size_override("font_size", 13)
+		hint.modulate = Color(1, 0.85, 0.4)
+		container.add_child(hint)
 
 	var cur := Label.new()
 	cur.text = "货币: $%d" % int(main.currency)
