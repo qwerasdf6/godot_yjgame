@@ -10,9 +10,10 @@ const CONTACT_RADIUS_SQ := CONTACT_RADIUS * CONTACT_RADIUS
 
 # ---- 商店等级 ----
 # 商店不再随机刷新：按游戏时间解锁等级，上架所有已解锁且未购买的物品
-# 180 秒解锁 2 级，420 秒解锁 3 级
+# 180 秒解锁 2 级，420 秒解锁 3 级，700 秒解锁 4 级（割草终局）
 const SHOP_TIER2_TIME := 180.0
 const SHOP_TIER3_TIME := 420.0
+const SHOP_TIER4_TIME := 700.0
 
 # ---- 联机 ----
 const MP_PLAYER_SCENE := preload("res://scenes/Player.tscn")
@@ -100,33 +101,41 @@ func _init_loadout() -> void:
 		# 成长曲线调整：初始武器强度下调，避免前期无双
 		var basic := Catalogs.make_projectile("鸡弹", 7.0, 500.0, 1, 0.0, Color(1, 0.9, 0.3))
 		owned_spells.append(basic)
-		current_weapon = Catalogs.make_weapon("小鸡枪", 2, 0.20)
+		current_weapon = Catalogs.make_weapon("小鸡枪", 1, 1, 0.20)
 		current_weapon.slots[0] = basic
 
 func _init_shop() -> void:
-		# ---- 投射物 ----
+		# ---- 投射物（插件）----
 		_add_spell(Catalogs.make_projectile("散弹", 4.0, 450.0, 3, 0.3, Color(0.3, 1.0, 0.6)), 80, 1)
-		_add_spell(Catalogs.make_projectile("重弹", 25.0, 350.0, 1, 0.0, Color(1.0, 0.4, 0.4)), 100, 2)
 		_add_spell(Catalogs.make_projectile("蛋壳弹", 8.0, 420.0, 2, 0.15, Color(0.95, 0.93, 0.85)), 70, 1)
-		_add_spell(Catalogs.make_projectile("鸡喙刺", 15.0, 700.0, 1, 0.0, Color(1.0, 0.55, 0.1)), 90, 2)
+		_add_spell(Catalogs.make_projectile("重弹", 25.0, 350.0, 1, 0.0, Color(1.0, 0.4, 0.4)), 100, 2)
+		_add_spell(Catalogs.make_projectile("鸡喙刺", 15.0, 700.0, 1, 0.0, Color(1.0, 0.55, 0.1), 1), 90, 2)
 		_add_spell(Catalogs.make_projectile("羽毛扇", 5.0, 600.0, 5, 0.5, Color(0.4, 0.95, 0.95)), 110, 3)
 		_add_spell(Catalogs.make_projectile("咯咯散", 3.0, 380.0, 6, 0.8, Color(1.0, 0.6, 0.85)), 100, 3)
+		_add_spell(Catalogs.make_projectile("陨星蛋", 90.0, 260.0, 1, 0.0, Color(1.0, 0.5, 0.2), 5), 380, 4)
+		_add_spell(Catalogs.make_projectile("湮灭光束", 35.0, 900.0, 1, 0.0, Color(0.6, 0.9, 1.0), 999), 420, 4)
+		_add_spell(Catalogs.make_projectile("鸡神风暴", 6.0, 620.0, 14, 1.2, Color(1.0, 0.85, 0.3)), 450, 4)
 
-		# ---- 修正 ----
+		# ---- 修正（增益）----
 		_add_spell(Catalogs.make_modifier("伤害强化", 1.5, 1.0, 0), 60, 1)
 		_add_spell(Catalogs.make_modifier("加速修正", 1.0, 1.4, 0), 50, 1)
-		_add_spell(Catalogs.make_modifier("多重+1", 1.0, 1.0, 1), 120, 3)
 		_add_spell(Catalogs.make_modifier("锋利修正", 1.2, 1.2, 0), 70, 2)
 		_add_spell(Catalogs.make_modifier("狂速修正", 0.85, 1.8, 0), 60, 2)
+		_add_spell(Catalogs.make_modifier("多重+1", 1.0, 1.0, 1), 120, 3)
 		_add_spell(Catalogs.make_modifier("多重+2", 0.8, 1.0, 2), 160, 3)
+		_add_spell(Catalogs.make_modifier("狂暴修正", 2.2, 1.0, 0), 350, 4)
+		_add_spell(Catalogs.make_modifier("无限穿透", 1.0, 1.0, 0, 99), 300, 4)
+		_add_spell(Catalogs.make_modifier("永恒弹道", 1.0, 1.0, 0, 0, 2.5), 280, 4)
+		_add_spell(Catalogs.make_modifier("万羽齐发", 0.9, 1.0, 4), 400, 4)
 
-		# ---- 武器 ----
-		_add_weapon(Catalogs.make_weapon("中鸡枪", 5, 0.15), 150, 1)
-		_add_weapon(Catalogs.make_weapon("大鸡枪", 3, 0.08), 200, 2)
-		_add_weapon(Catalogs.make_weapon("连发鸡枪", 2, 0.06), 180, 2)
-		_add_weapon(Catalogs.make_weapon("鸡王炮", 6, 0.25), 260, 3)
-		_add_weapon(Catalogs.make_weapon("精确鸡枪", 1, 0.10), 140, 1)
-		_add_weapon(Catalogs.make_weapon("母鸡炮台", 8, 0.30), 320, 3)
+		# ---- 武器（插件槽, 增益槽, 冷却）----
+		_add_weapon(Catalogs.make_weapon("精确鸡枪", 1, 2, 0.10), 140, 1)
+		_add_weapon(Catalogs.make_weapon("中鸡枪", 1, 3, 0.15), 150, 1)
+		_add_weapon(Catalogs.make_weapon("连发鸡枪", 1, 3, 0.06), 180, 2)
+		_add_weapon(Catalogs.make_weapon("大鸡枪", 2, 3, 0.08), 200, 2)
+		_add_weapon(Catalogs.make_weapon("鸡王炮", 2, 4, 0.25), 260, 3)
+		_add_weapon(Catalogs.make_weapon("母鸡炮台", 2, 5, 0.30), 320, 3)
+		_add_weapon(Catalogs.make_weapon("鸡神权杖", 2, 6, 0.12), 520, 4)
 
 		_ensure_stock()
 
@@ -186,8 +195,14 @@ func _resolve_collisions() -> void:
 						# 目前对所有敌人使用统一命中半径；
 						# 若 Enemy 将来支持不同体型，可改为 e.hit_radius。
 						if _segment_intersects_circle(p0, p1, e.global_position, HIT_RADIUS_SQ):
+								if e in b.hit_enemies:
+									continue
 								e.take_damage(b.damage)
 								debug_hits += 1
+								if b.pierce > 0:
+									b.pierce -= 1
+									b.hit_enemies.append(e)
+									continue
 								bullet_pool.recycle(b)
 								break
 
@@ -281,6 +296,8 @@ func _sync_pause() -> void:
 
 # 当前商店等级：随游戏时间解锁
 func get_shop_tier() -> int:
+		if elapsed >= SHOP_TIER4_TIME:
+				return 4
 		if elapsed >= SHOP_TIER3_TIME:
 				return 3
 		if elapsed >= SHOP_TIER2_TIME:
@@ -339,16 +356,24 @@ func buy_weapon(index: int) -> void:
 
 		var new_weapon: WeaponData = shop_weapons[index].duplicate(true)
 
-		# 先把旧武器槽中的法术收回 owned_spells
+		# 旧武器的插件与增益全部收回背包，避免"买武器丢技能"
 		for s in current_weapon.slots:
 				if s != null and not owned_spells.has(s):
 						owned_spells.append(s)
+		for s in current_weapon.mod_slots:
+				if s != null and not owned_spells.has(s):
+						owned_spells.append(s)
 
-		# 再把旧武器槽里的法术按顺序填入新武器的前 N 个槽，避免"买武器丢法术"
+		# 插件槽按顺序迁移到新武器前 N 个插件槽
 		var old_slots: Array = current_weapon.slots
 		var copy_count := mini(old_slots.size(), new_weapon.slots.size())
 		for i in range(copy_count):
 				new_weapon.slots[i] = old_slots[i]
+		# 增益槽按顺序迁移到新武器前 M 个增益槽
+		var old_mods: Array = current_weapon.mod_slots
+		var copy_mods := mini(old_mods.size(), new_weapon.mod_slots.size())
+		for i in range(copy_mods):
+				new_weapon.mod_slots[i] = old_mods[i]
 
 		current_weapon = new_weapon
 		weapon.set_weapon(current_weapon)
@@ -421,7 +446,7 @@ func _mp_peer_connected(id: int) -> void:
 		rw.remote_controlled = true
 		# 远程玩家从初始小鸡枪开始（与单机一致）
 		var basic := Catalogs.make_projectile("鸡弹", 7.0, 500.0, 1, 0.0, Color(1, 0.9, 0.3))
-		var wdata := Catalogs.make_weapon("小鸡枪", 2, 0.20)
+		var wdata := Catalogs.make_weapon("小鸡枪", 1, 1, 0.20)
 		wdata.slots[0] = basic
 		rw.setup(self, bullet_pool, wdata)
 		_mp_remote_weapon_data[id] = wdata
@@ -593,17 +618,22 @@ func mp_buy_weapon(index: int) -> void:
 				return
 		currency -= price
 		var old: WeaponData = _mp_remote_weapon_data.get(id, null)
-		var new_w: WeaponData = shop_weapons[index]
+		var new_w: WeaponData = shop_weapons[index].duplicate(true)
 		if old != null:
-				# 沿用旧武器前 N 个槽的法术，避免"买武器丢法术"
+				# 插件槽与增益槽分别迁移，避免"买武器丢技能"
 				var copy_count := mini(old.slots.size(), new_w.slots.size())
 				for i in range(copy_count):
 						if old.slots[i] != null:
 								new_w.slots[i] = old.slots[i]
+				var copy_mods := mini(old.mod_slots.size(), new_w.mod_slots.size())
+					for i in range(copy_mods):
+							if old.mod_slots[i] != null:
+								new_w.mod_slots[i] = old.mod_slots[i]
 		_mp_remote_weapon_data[id] = new_w
 		var rw = _mp_remote_weapons.get(id)
 		if rw != null and is_instance_valid(rw):
 				rw.set_weapon(new_w)
+		_pool_remove_weapon(shop_weapons[index])
 		shop_weapons.remove_at(index)
 		shop_weapon_prices.remove_at(index)
 		mp_sync_shop.rpc(_mp_build_shop_payload())
@@ -810,10 +840,12 @@ func _mp_apply_shop_payload(p: Dictionary) -> void:
 		shop_weapon_prices.clear()
 		var weapon_names: Array = p["weapon_names"]
 		var weapon_slots: Array = p["weapon_slots"]
+		var weapon_mod_slots: Array = p.get("weapon_mod_slots", [])
 		var weapon_delays: Array = p["weapon_delays"]
 		var weapon_prices: Array = p["weapon_prices"]
 		for i in weapon_names.size():
-				var w := Catalogs.make_weapon(weapon_names[i], int(weapon_slots[i]), weapon_delays[i])
+				var w := Catalogs.make_weapon(weapon_names[i], int(weapon_slots[i]),
+						int(weapon_mod_slots[i]) if i < weapon_mod_slots.size() else 1, weapon_delays[i])
 				shop_weapons.append(w)
 				shop_weapon_prices.append(int(weapon_prices[i]))
 		# 已拥有法术（编辑器在客户端禁用，仅作展示）
@@ -821,7 +853,8 @@ func _mp_apply_shop_payload(p: Dictionary) -> void:
 		for n in p["owned_names"]:
 				owned_spells.append(Catalogs.make_projectile(n, 1.0, 1.0, 1, 0.0, Color.WHITE))
 		# 当前武器（HUD 展示用）
-		current_weapon = Catalogs.make_weapon(p["weapon_name"], int(p["weapon_slot_count"]), p["weapon_cast_delay"])
+		current_weapon = Catalogs.make_weapon(p["weapon_name"], int(p["weapon_slot_count"]),
+				int(p.get("weapon_mod_slot_count", 1)), p["weapon_cast_delay"])
 
 # ---------- 重开 / 返回主菜单 ----------
 func _mp_restart_all() -> void:

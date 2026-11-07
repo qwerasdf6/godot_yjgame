@@ -4,6 +4,8 @@ extends Sprite2D
 var velocity: Vector2 = Vector2.ZERO
 var damage: float = 10.0
 var lifetime: float = 2.0
+var pierce: int = 0          # 剩余可穿透数
+var hit_enemies: Array = []  # 已命中过的敌人（穿透防重复结算）
 var active: bool = false
 var prev_position: Vector2 = Vector2.ZERO
 var pool = null

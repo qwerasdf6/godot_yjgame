@@ -51,9 +51,11 @@ func refresh() -> void:
 	container.add_child(title)
 
 	# 下一级解锁提示
-	if tier < 3:
-		var need: int = 2 if tier == 1 else 3
-		var left: float = (MainNode.SHOP_TIER2_TIME if tier == 1 else MainNode.SHOP_TIER3_TIME) - main.elapsed
+	if tier < 4:
+		var need: int = tier + 1
+		var t: float = MainNode.SHOP_TIER2_TIME if tier == 1 else (
+			MainNode.SHOP_TIER3_TIME if tier == 2 else MainNode.SHOP_TIER4_TIME)
+		var left: float = t - main.elapsed
 		var hint := Label.new()
 		hint.text = "等级 %d 将于 %d 秒后解锁" % [need, int(ceil(left))]
 		hint.add_theme_font_size_override("font_size", 13)
