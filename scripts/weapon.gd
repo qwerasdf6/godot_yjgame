@@ -30,27 +30,24 @@ func _process(delta: float) -> void:
 				_cooldown = weapon_data.cast_delay
 				_cast()
 
-# 施放：收集全部增益槽修正，应用到每个插件槽的投射物上
 func _cast() -> void:
 		if remote_controlled and not net_firing:
 				return
 		var aim := _get_aim_direction()
 		if aim == Vector2.ZERO:
 				return
-		var mods: Array[SpellData] = []
-		for i in weapon_data.mod_slot_count:
-				var m: SpellData = null
-				if i < weapon_data.mod_slots.size():
-						m = weapon_data.mod_slots[i]
-				if m != null:
-						mods.append(m)
+		var pending_mods: Array[SpellData] = []
 		for i in weapon_data.slot_count:
 				var s: SpellData = null
 				if i < weapon_data.slots.size():
 						s = weapon_data.slots[i]
-				if s == null or s.type != SpellData.Type.PROJECTILE:
+				if s == null:
 						continue
-				_fire_projectile(s, mods, aim)
+				if s.type == SpellData.Type.MODIFIER:
+						pending_mods.append(s)
+				else:
+						_fire_projectile(s, pending_mods, aim)
+						pending_mods.clear()
 
 func _get_aim_direction() -> Vector2:
 		if remote_controlled:
@@ -70,20 +67,16 @@ func _fire_projectile(spell: SpellData, mods: Array[SpellData], dir: Vector2) ->
 		var cnt := spell.count
 		var spr := spell.spread
 		var col := spell.color
-		var pierce := spell.pierce
-		var life := 2.0
 
 		for m in mods:
 				dmg *= m.modifier_damage_mult
 				spd *= m.modifier_speed_mult
 				cnt += m.modifier_count_add
-				pierce += m.modifier_pierce_add
-				life *= m.modifier_lifetime_mult
 
 		var base_angle := dir.angle()
 		for i in cnt:
 				var offset := 0.0
 				if cnt > 1 and spr > 0.0:
-					offset = (i - (cnt - 1) / 2.0) * spr
+						offset = (i - (cnt - 1) / 2.0) * spr
 				var a := base_angle + offset
-				bullet_pool.spawn(global_position, Vector2.from_angle(a) * spd, dmg, life, col, pierce)
+				bullet_pool.spawn(global_position, Vector2.from_angle(a) * spd, dmg, 2.0, col)

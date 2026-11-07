@@ -20,7 +20,7 @@ func _ready() -> void:
 				b.pool = self
 				_available.append(b)
 
-func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float = 2.0, color: Color = Color.WHITE, pierce := 0) -> void:
+func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float = 2.0, color: Color = Color.WHITE) -> void:
 		var b: Bullet
 		if _available.is_empty():
 				push_warning("BulletPool exhausted, creating extra bullet")
@@ -28,7 +28,7 @@ func spawn(pos: Vector2, vel: Vector2, dmg: float, life: float = 2.0, color: Col
 				add_child(b)
 		else:
 				b = _available.pop_back()
-		b.spawn(pos, vel, dmg, life, color, self, pierce)
+		b.spawn(pos, vel, dmg, life, color, self)
 		_active.append(b)
 		# 主机上：让 Main 广播给客户端（客户端收到后本地生成视觉子弹）
 		if net_main != null and Net.is_host():
